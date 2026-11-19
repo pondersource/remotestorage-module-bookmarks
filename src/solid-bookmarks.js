@@ -56,6 +56,7 @@ function parseBookmarks(text, { path, baseIRI, contentType = 'text/turtle' }) {
     }
   };
   const subjects = new Map();
+  const historyRequired = store.getQuads(null, null, null, null).some(q => q.predicate.value.startsWith(NS.crdt));
   for (const type of types) {
     for (const subject of store.getSubjects(namedNode(NS.rdf + 'type'), namedNode(type), null)) {
       if (subject.termType === 'NamedNode') subjects.set(subject.value, subject);
@@ -75,7 +76,7 @@ function parseBookmarks(text, { path, baseIRI, contentType = 'text/turtle' }) {
       url: first(subject, [NS.bookmark + 'recalls', NS.as + 'url'], ['Literal', 'NamedNode']) || '',
       title: literal([NS.dc + 'title', NS.rdfs + 'label', NS.as + 'name']) || '',
       tags: topics.map(topic => topic.value),
-      solid: { subject: subject.value, document: baseIRI, path, topics, readOnly: true }
+      solid: { subject: subject.value, document: baseIRI, path, topics, writeSupport: historyRequired ? 'history-required' : 'explicit-update' }
     };
     const createdAt = meta([NS.crdt + 'createdAt']) || literal([NS.dc + 'created', NS.as + 'published', NS.crdt + 'createdAt']);
     const updatedAt = meta([NS.crdt + 'updatedAt']) || literal([NS.dc + 'updated', NS.crdt + 'updatedAt']);

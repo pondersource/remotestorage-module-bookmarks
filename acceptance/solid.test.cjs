@@ -40,7 +40,7 @@ test('real Solid login, native RDF discovery, module JSON write, private data re
         if (response.statusCode !== 201) throw new Error('Fixture write failed: ' + response.statusCode);
       }
       await put('/bookmarks/native.ttl', fixture, { ifNoneMatch: '*' });
-      await put('/bookmarks/native/child.ttl', '@prefix a: <https://www.w3.org/ns/activitystreams#>. <#note> a a:Note; a:name "Activity note"; a:url <https://example.net>.', { ifNoneMatch: '*' });
+      await put('/bookmarks/native/child.ttl', '@prefix a: <https://www.w3.org/ns/activitystreams#>. <#note> a a:Note; a:name "Activity note"; a:url <https://example.net>; <https://unknown.example/p> "Keep this". <#sibling> a a:Note; a:name "Removable note"; a:url <https://sibling.example>.', { ifNoneMatch: '*' });
       await put('/bookmarks/type-index.ttl', '@prefix s: <http://www.w3.org/ns/solid/terms#>. @prefix b: <http://www.w3.org/2002/01/bookmark#>. <#doc> s:forClass b:Bookmark; s:instance <' + pod + 'bookmarks/native.ttl>. <#container> s:forClass b:Bookmark; s:instanceContainer <' + pod + 'bookmarks/native/>.', { ifNoneMatch: '*' });
       const profile = await rs.solid.get('/profile/card');
       if (profile.statusCode !== 200) throw new Error('Missing profile');
@@ -56,13 +56,40 @@ test('real Solid login, native RDF discovery, module JSON write, private data re
         return collection.getAll(offline ? undefined : 0);
       }, { pod, offline });
     }
-    const initial = await read(first);
-    assert.equal(initial.length, 5);
-    assert.equal(new Set(initial.map(b => b.id)).size, 5);
+    let initial = await read(first);
+    assert.equal(initial.length, 6);
+    assert.equal(new Set(initial.map(b => b.id)).size, 6);
     assert.equal(initial.find(b => b.title === 'sdf').solid.topics[0].termType, 'Literal');
     assert.equal(initial.find(b => b.title === 'Activity note').url, 'https://example.net');
     const anonymous = await fetch(pod + 'bookmarks/native.ttl');
     assert.ok([401, 403, 404].includes(anonymous.status));
+
+    const nativeWrite = first.waitForResponse(r => r.url() === pod + 'bookmarks/native/child.ttl' && r.request().method() === 'PUT' && r.ok() && r.request().postData()?.includes('Edited Activity note'));
+    const editable = initial.find(b => b.title === 'Activity note');
+    await first.evaluate(async ({ id, pod }) => {
+      const { rs, client } = acceptance;
+      const collection = rs.bookmarks.openSolidCollection({ client, storageURL: pod });
+      await collection.update(id, { title: 'Edited Activity note' });
+      await rs.startSync();
+    }, { id: editable.id, pod });
+    await nativeWrite;
+    let raw = await first.evaluate(() => acceptance.rs.solid.get('/bookmarks/native/child.ttl'));
+    assert.ok(raw.body.includes('Keep this'));
+    assert.ok(raw.body.includes('Removable note'));
+    const sibling = initial.find(b => b.title === 'Removable note');
+    const nativeDelete = first.waitForResponse(r => r.url() === pod + 'bookmarks/native/child.ttl' && r.request().method() === 'PUT' && r.ok() && !r.request().postData()?.includes('Removable note'));
+    await first.evaluate(async ({ id, pod }) => {
+      const { rs, client } = acceptance;
+      await rs.bookmarks.openSolidCollection({ client, storageURL: pod }).remove(id);
+      await rs.startSync();
+    }, { id: sibling.id, pod });
+    await nativeDelete;
+    raw = await first.evaluate(() => acceptance.rs.solid.get('/bookmarks/native/child.ttl'));
+    assert.ok(raw.body.includes('Keep this'));
+    assert.ok(!raw.body.includes('Removable note'));
+    initial = await read(first);
+    assert.equal(initial.length, 5);
+    assert.equal(initial.find(b => b.id === editable.id).title, 'Edited Activity note');
 
     const written = first.waitForResponse(r => r.url().includes('/bookmarks/archive/') && r.request().method() === 'PUT' && r.ok());
     await first.evaluate(async () => {

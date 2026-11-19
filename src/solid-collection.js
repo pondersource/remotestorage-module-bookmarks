@@ -1,5 +1,5 @@
 const { DataFactory } = require('n3');
-const { parseBookmarks, parseDataset, isRdf, types, validatePath } = require('./solid-bookmarks');
+const { parseBookmarks, parseDataset, isRdf, types, validatePath, decodeReference } = require('./solid-bookmarks');
 const { namedNode } = DataFactory;
 const SOLID = 'http://www.w3.org/ns/solid/terms#';
 
@@ -15,7 +15,11 @@ class SolidCollection {
   }
 
   async baseURL() {
-    const value = this.storageURL || await this.client.getItemURL('');
+    const actual = await this.client.getItemURL('');
+    if (this.storageURL && actual && new URL(this.storageURL).href !== new URL(actual).href) {
+      throw new Error('storageURL does not match the supplied client scope');
+    }
+    const value = this.storageURL || actual;
     if (!value) throw new Error('Supply storageURL when reopening a cached Solid collection offline');
     const url = new URL(value);
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/')) {
@@ -126,6 +130,20 @@ class SolidCollection {
       }
     }
     return [...bookmarks.values()];
+  }
+
+  async update(id, changes) {
+    const ref = decodeReference(id);
+    if (!ref) throw new Error('Expected a Solid bookmark reference');
+    const base = await this.baseURL();
+    return require('./solid-update').mutate(this.client, id, changes, new URL(ref[0], base).href);
+  }
+
+  async remove(id) {
+    const ref = decodeReference(id);
+    if (!ref) throw new Error('Expected a Solid bookmark reference');
+    const base = await this.baseURL();
+    return require('./solid-update').mutate(this.client, id, undefined, new URL(ref[0], base).href, true);
   }
 }
 
