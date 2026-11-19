@@ -67,13 +67,13 @@ Writes currently cover Turtle and N-Triples, and the `title`, `url`, `creator`, 
 
 ## Work still required before app migration
 
-This remains an interoperability draft. Native RDF creation, Soukai operation-history writes, cross-Pod source routing, remote-conflict browser coverage, and original-app readback still need work before replacing existing application storage.
+This remains an interoperability draft. Native RDF creation, Soukai operation-history writes, cross-Pod source routing, application-level conflict resolution, and original-app readback still need work before replacing existing application storage.
 
-The browser workflow builds exactly the Solid revision used by the launcher: `c0f41cb89aba7e45524897e7d7fde190f6d57144`. It uses disposable CSS accounts and checks login, discovery, RDF edits/deletion, JSON module writes, private-access denial, clean-browser recovery and offline reads. Check the current PR's `solid` job for the outcome; adding the test is not evidence that it passed. Local Chromium launch was unavailable. Folder enumeration remains one level deep; the explicit Solid collection supports recursive registered containers.
+The browser workflow builds exactly the Solid revision used by the launcher: `c0f41cb89aba7e45524897e7d7fde190f6d57144`. It uses disposable CSS accounts and checks login, discovery, RDF edits/deletion, JSON module writes, private-access denial, clean-browser recovery, offline reads and concurrent edits. The conflict test checks that rs.js exposes local, remote and last-common RDF bodies and keeps the newer Pod version intact; it does not claim automatic RDF merging. Check the current PR's `solid` job for the outcome; adding the test is not evidence that it passed. Local Chromium launch was unavailable. Folder enumeration remains one level deep; the explicit Solid collection supports recursive registered containers.
 
 Next gates:
 
-1. Pass and review the real Solid-backend acceptance workflow, then add remote-conflict scenarios.
+1. Pass and review the real Solid-backend acceptance workflow and design application-level conflict resolution.
 2. Implement native RDF creation and history-aware Soukai operations without replacing existing formats.
 3. Prove original-app readback and support the remaining source/format cases.
 4. Complete real Pod/offline round trips for each consumer app's actual model.

@@ -108,6 +108,35 @@ test('real Solid login, native RDF discovery, module JSON write, private data re
     assert.deepEqual(json.tags, ['verified']);
     await firstContext.setOffline(true);
     assert.deepEqual(await read(first, true), initial);
+    // Both contexts have the common document. Keep a local edit offline while
+    // another browser updates the same native RDF document on the Pod.
+    await first.evaluate(async ({ id, pod }) => {
+      const { rs, client } = acceptance;
+      acceptance.conflicts = [];
+      client.on('change', change => {
+        if (change.origin === 'conflict') acceptance.conflicts.push({
+          oldValue: change.oldValue, newValue: change.newValue, lastCommonValue: change.lastCommonValue
+        });
+      });
+      await rs.bookmarks.openSolidCollection({ client, storageURL: pod }).update(id, { title: 'Offline local edit' });
+    }, { id: editable.id, pod });
+    const concurrentWrite = second.waitForResponse(r => r.url() === pod + 'bookmarks/native/child.ttl' && r.request().method() === 'PUT' && r.ok() && r.request().postData()?.includes('https://newer.example/'));
+    await second.evaluate(async ({ id, pod }) => {
+      const { rs, client } = acceptance;
+      await rs.bookmarks.openSolidCollection({ client, storageURL: pod }).update(id, { url: 'https://newer.example/' });
+      await rs.startSync();
+    }, { id: editable.id, pod });
+    await concurrentWrite;
+    await firstContext.setOffline(false);
+    await first.evaluate(() => acceptance.rs.startSync());
+    await first.waitForFunction(() => acceptance.conflicts.length > 0);
+    const conflict = await first.evaluate(() => acceptance.conflicts[0]);
+    assert.ok(conflict.oldValue.includes('Offline local edit'));
+    assert.ok(conflict.newValue.includes('https://newer.example/'));
+    assert.ok(conflict.lastCommonValue.includes('Edited Activity note'));
+    raw = await second.evaluate(() => acceptance.rs.solid.get('/bookmarks/native/child.ttl'));
+    assert.ok(raw.body.includes('https://newer.example/'));
+    assert.ok(!raw.body.includes('Offline local edit'));
     assert.deepEqual(pageErrors, []);
     console.log('Verified native RDF records:', recovered.length, 'and module JSON persistence through the pinned Solid backend');
   } finally { await browser.close(); }
