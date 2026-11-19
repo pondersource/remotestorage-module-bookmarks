@@ -22,13 +22,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: remotestorage/remotestorage.js
-          ref: c0f41cb89aba7e45524897e7d7fde190f6d57144
+          repository: pondersource/remotestorage.js
+          ref: 5ee38595c6cb9a0e8048849c95510c7bee93ad35
           path: rs-solid-source
       - uses: actions/setup-node@v4
         with:
           node-version: 24
       - run: npm ci && npm run build:solid
+        working-directory: rs-solid-source
+      - run: npm run build:js && npx mocha test/unit/sync.test.mjs
         working-directory: rs-solid-source
       - run: npm ci && npx playwright install --with-deps chromium
         working-directory: rs-solid-source/examples/solid
