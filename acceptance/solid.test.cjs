@@ -40,22 +40,13 @@ test('real Solid login, native RDF discovery, module JSON write, private data re
   await Promise.all([wait(app), wait('http://localhost:3000/.well-known/openid-configuration')]);
   const browser = await chromium.launch();
   try {
-    const firstContext = await browser.newContext();
-    const first = await firstContext.newPage();
+    const seedContext = await browser.newContext();
+    const seed = await seedContext.newPage();
     const pageErrors = [];
-    first.on('pageerror', error => pageErrors.push(error.message));
-    first.on('response', response => {
-      if (response.url() === pod + 'bookmarks/native/child.ttl' && response.request().method() === 'PUT') {
-        console.log('Native RDF PUT', response.status(), {
-          edited: response.request().postData()?.includes('Edited Activity note'),
-          sibling: response.request().postData()?.includes('Removable note')
-        });
-      }
-    });
-    await login(first);
+    await login(seed);
     const fixture = readFileSync(__dirname + '/../test/fixtures/bookmark-formats.ttl', 'utf8');
     // Fixture setup writes native RDF through the authenticated backend, not the bookmark parser.
-    await first.evaluate(async ({ fixture, pod }) => {
+    await seed.evaluate(async ({ fixture, pod }) => {
       const { rs } = acceptance;
       async function put(path, text, options) {
         const response = await rs.solid.put(path, text, 'text/turtle', options);
@@ -69,6 +60,22 @@ test('real Solid login, native RDF discovery, module JSON write, private data re
       const triple = '\n<' + rs.solid.getSession().info.webId + '> <http://www.w3.org/ns/solid/terms#privateTypeIndex> <' + pod + 'bookmarks/type-index.ttl>.\n';
       await put('/profile/card', profile.body + triple, { ifMatch: profile.revision });
     }, { fixture, pod });
+    // Start readers with cold caches after fixture setup. This avoids mixing
+    // direct setup writes with sync requests already running in the seeder.
+    await seedContext.close();
+    const firstContext = await browser.newContext();
+    const first = await firstContext.newPage();
+    first.on('pageerror', error => pageErrors.push(error.message));
+    first.on('console', message => { if (message.type() === 'log') console.log('Reader:', message.text()); });
+    first.on('response', response => {
+      if (response.url() === pod + 'bookmarks/native/child.ttl' && response.request().method() === 'PUT') {
+        console.log('Native RDF PUT', response.status(), {
+          edited: response.request().postData()?.includes('Edited Activity note'),
+          sibling: response.request().postData()?.includes('Removable note')
+        });
+      }
+    });
+    await login(first);
     async function read(page, offline = false) {
       return page.evaluate(async ({ pod, offline }) => {
         const { rs, client } = acceptance;
