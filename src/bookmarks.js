@@ -3,6 +3,7 @@
 //
 
 const md5 = require('md5');
+const { parseBookmarks, isRdf, decodeReference, validatePath } = require('./solid-bookmarks');
 
 const extend = function (target) {
   const sources = Array.prototype.slice.call(arguments, 1);
@@ -24,6 +25,24 @@ const urlHash = function (url) {
 //
 
 const Bookmarks = function (privateClient/*, publicClient*/) {
+
+  async function readDocument(path, maxAge) {
+    validatePath(path);
+    const file = await privateClient.getFile(path, maxAge);
+    if (file.data === undefined || file.data === null) return [];
+    if (isRdf(file.contentType)) {
+      return parseBookmarks(file.data, { path, baseIRI: privateClient.getItemURL(path), contentType: file.contentType });
+    }
+    if (file.contentType && !/^(application\/json|application\/[^;]+\+json)(;|$)/i.test(file.contentType)) return [];
+    const value = typeof file.data === 'string' ? JSON.parse(file.data) : file.data;
+    return value && typeof value === 'object' && typeof value.url === 'string' ? [value] : [];
+  }
+
+  async function readReference(id, maxAge) {
+    const ref = decodeReference(id);
+    if (!ref) return undefined;
+    return (await readDocument(ref[0], maxAge)).find(bookmark => bookmark.id === id);
+  }
 
   //
   // Types/Schemas
@@ -122,20 +141,23 @@ const Bookmarks = function (privateClient/*, publicClient*/) {
     }
 
     get (id) {
+      if (decodeReference(id)) return readReference(id);
       return privateClient.getObject(`${this.basePath}/${id}`);
     }
 
     getAll (maxAge) {
-      return privateClient.getAll(`${this.basePath}/`, maxAge)
-        .then(bookmarks => {
-          if (!bookmarks) return [];
-          return Object.keys(bookmarks).map(id => bookmarks[id]);
+      return privateClient.getListing(this.basePath + '/', maxAge)
+        .then(async listing => {
+          const paths = Object.keys(listing || {}).filter(path => !path.endsWith('/'));
+          const values = await Promise.all(paths.map(path => readDocument(this.basePath + '/' + path, maxAge)));
+          return values.flat();
         });
     }
 
     searchByURL (url) {
       const id = urlHash(url);
-      return privateClient.getObject(`${this.basePath}/${id}`);
+      return privateClient.getObject(`${this.basePath}/${id}`)
+        .then(bookmark => bookmark || this.getAll().then(all => all.find(item => item.url === url)));
     }
 
     searchByTags (tags) {
@@ -150,6 +172,9 @@ const Bookmarks = function (privateClient/*, publicClient*/) {
     }
 
     store (bookmark, bookmarkType='archive-bookmark') {
+      if (bookmark.solid || decodeReference(bookmark.id)) {
+        return Promise.reject(new Error('Solid RDF bookmarks are read-only until lossless RDF/history writes are supported'));
+      }
       bookmark.id = urlHash(bookmark.url);
       if (bookmark.createdAt) {
         bookmark.updatedAt = new Date().toISOString();
@@ -167,6 +192,7 @@ const Bookmarks = function (privateClient/*, publicClient*/) {
     }
 
     remove (id) {
+      if (decodeReference(id)) return Promise.reject(new Error('Solid RDF bookmarks are read-only'));
       return privateClient.remove(`${this.basePath}/${id}`);
     }
   }
@@ -184,6 +210,9 @@ const Bookmarks = function (privateClient/*, publicClient*/) {
     openFolder (folderName) {
       return new Folder(folderName);
     },
+
+    // Read one RDF or JSON document through the rs.js scoped cache and backend.
+    readDocument,
 
     client: privateClient,
   };
