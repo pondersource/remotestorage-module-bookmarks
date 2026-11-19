@@ -69,7 +69,11 @@ Writes currently cover Turtle and N-Triples, and the `title`, `url`, `creator`, 
 
 This remains an interoperability draft. Native RDF creation, Soukai operation-history writes, cross-Pod source routing, application-level conflict resolution, and original-app readback still need work before replacing existing application storage.
 
-The browser workflow builds exactly the Solid revision used by the launcher: `c0f41cb89aba7e45524897e7d7fde190f6d57144`. It uses disposable CSS accounts and checks login, discovery, RDF edits/deletion, JSON module writes, private-access denial, clean-browser recovery, offline reads and concurrent edits. The conflict test checks that rs.js exposes local, remote and last-common RDF bodies and keeps the newer Pod version intact; it does not claim automatic RDF merging. Check the current PR's `solid` job for the outcome; adding the test is not evidence that it passed. Local Chromium launch was unavailable. Folder enumeration remains one level deep; the explicit Solid collection supports recursive registered containers.
+Read/discovery, JSON persistence, private-access denial, fresh-browser recovery and offline checks passed against the launcher's `c0f41cb89aba7e45524897e7d7fde190f6d57144` build ([run 44555139839](https://github.com/pondersource/remotestorage-module-bookmarks/actions/runs/44555139839)). Consecutive native RDF edits exposed a sync bug: CSS accepted an update with HTTP 205 but no ETag, then the next update used a creation precondition and failed with 412.
+
+The current workflow builds `pondersource/remotestorage.js` at `b918b45f00598a9c219519b566a583344fb8f6ce`: that exact launcher baseline plus the focused [ETag-less acknowledgement fix, PR 6](https://github.com/pondersource/remotestorage.js/pull/6). It also runs the sync unit suite. This dependency has not been adopted by the production launcher.
+
+The browser test uses disposable CSS accounts and checks login, discovery, RDF edits/deletion, JSON module writes, private-access denial, clean-browser recovery, offline reads and concurrent edits. The conflict test checks that rs.js exposes local, remote and last-common RDF bodies and keeps the newer Pod version intact; it does not claim automatic RDF merging. Check the current PR's `solid` job for the outcome; adding the test is not evidence that it passed. Local Chromium launch was unavailable. Folder enumeration remains one level deep; the explicit Solid collection supports recursive registered containers.
 
 Next gates:
 
