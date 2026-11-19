@@ -1,0 +1,45 @@
+name: Bookmark compatibility
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+  solid:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RS_SOLID_TEST_PASSWORD: disposable-bookmarks-test-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: pondersource/remotestorage.js
+          ref: b918b45f00598a9c219519b566a583344fb8f6ce
+          path: rs-solid-source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci && npm run build:solid
+        working-directory: rs-solid-source
+      - run: npm run build:js && npx mocha test/unit/sync.test.mjs
+        working-directory: rs-solid-source
+      - run: npm ci && npx playwright install --with-deps chromium
+        working-directory: rs-solid-source/examples/solid
+      - run: npm ci && npm test
+      - name: Test module against real Solid authentication and storage
+        run: |
+          export SOLID_SOURCE="$PWD/rs-solid-source"
+          export PLAYWRIGHT_MODULE="$SOLID_SOURCE/examples/solid/node_modules/@playwright/test"
+          (cd "$SOLID_SOURCE/examples/solid" && exec node tests/server.cjs) &
+          node acceptance/serve.cjs &
+          trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+          node --test acceptance/solid.test.cjs

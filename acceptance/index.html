@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Bookmark Solid backend acceptance</title>
+<button id="connect">Connect to test Pod</button>
+<p id="status">Not connected</p>
+<script src="/remotestorage-solid.js"></script>
+<script src="/bookmarks.js"></script>
+<script>
+  const rs = new RemoteStorage({ modules: [Bookmarks] });
+  for (const scope of ['bookmarks', 'profile']) {
+    rs.access.claim(scope, 'rw');
+    rs.caching.enable('/' + scope + '/');
+  }
+  const client = rs.scope('/');
+  window.acceptance = { rs, client, errors: [] };
+  rs.on('error', error => acceptance.errors.push(String(error.message || error)));
+  rs.on('pod-not-selected', () => rs.solid.setPodURL(rs.solid.getPodURLs()[0]));
+  rs.on('connected', () => { document.querySelector('#status').textContent = 'Connected'; });
+  document.querySelector('#connect').onclick = () => {
+    rs.solid.setAuthURL('http://localhost:3000');
+    rs.solid.connect();
+  };
+</script>
