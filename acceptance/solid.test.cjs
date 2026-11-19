@@ -22,6 +22,20 @@ async function login(page) {
   await page.waitForURL(app);
   await page.waitForFunction(() => document.querySelector('#status').textContent === 'Connected');
 }
+async function settled(page) {
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const { rs } = acceptance;
+    const timer = setTimeout(() => { rs.removeEventListener('sync-done', done); reject(new Error('Sync did not settle: ' + acceptance.errors.join('; '))); }, 15000);
+    function done(outcome) {
+      if (!outcome.completed) return;
+      clearTimeout(timer);
+      rs.removeEventListener('sync-done', done);
+      resolve();
+    }
+    rs.on('sync-done', done);
+    rs.startSync().catch(reject);
+  }));
+}
 test('real Solid login, native RDF discovery, module JSON write, private data recovery and offline reads', { timeout: 150000 }, async () => {
   await Promise.all([wait(app), wait('http://localhost:3000/.well-known/openid-configuration')]);
   const browser = await chromium.launch();
@@ -30,6 +44,14 @@ test('real Solid login, native RDF discovery, module JSON write, private data re
     const first = await firstContext.newPage();
     const pageErrors = [];
     first.on('pageerror', error => pageErrors.push(error.message));
+    first.on('response', response => {
+      if (response.url() === pod + 'bookmarks/native/child.ttl' && response.request().method() === 'PUT') {
+        console.log('Native RDF PUT', response.status(), {
+          edited: response.request().postData()?.includes('Edited Activity note'),
+          sibling: response.request().postData()?.includes('Removable note')
+        });
+      }
+    });
     await login(first);
     const fixture = readFileSync(__dirname + '/../test/fixtures/bookmark-formats.ttl', 'utf8');
     // Fixture setup writes native RDF through the authenticated backend, not the bookmark parser.
@@ -73,6 +95,7 @@ test('real Solid login, native RDF discovery, module JSON write, private data re
       await rs.startSync();
     }, { id: editable.id, pod });
     await nativeWrite;
+    await settled(first);
     let raw = await first.evaluate(() => acceptance.rs.solid.get('/bookmarks/native/child.ttl'));
     assert.ok(raw.body.includes('Keep this'));
     assert.ok(raw.body.includes('Removable note'));
@@ -81,9 +104,12 @@ test('real Solid login, native RDF discovery, module JSON write, private data re
     await first.evaluate(async ({ id, pod }) => {
       const { rs, client } = acceptance;
       await rs.bookmarks.openSolidCollection({ client, storageURL: pod }).remove(id);
+      const cached = await client.getFile('bookmarks/native/child.ttl');
+      console.log('Deleted sibling locally:', !cached.data.includes('Removable note'));
       await rs.startSync();
     }, { id: sibling.id, pod });
     await nativeDelete;
+    await settled(first);
     raw = await first.evaluate(() => acceptance.rs.solid.get('/bookmarks/native/child.ttl'));
     assert.ok(raw.body.includes('Keep this'));
     assert.ok(!raw.body.includes('Removable note'));
