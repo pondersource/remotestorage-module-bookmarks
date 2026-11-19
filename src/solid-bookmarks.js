@@ -27,7 +27,7 @@ function decodeReference(id) {
 }
 function validatePath(path) {
   if (typeof path !== 'string' || !path || path.startsWith('/') || /[?#]/.test(path) ||
-      path.split('/').some(part => !part || ['.', '..'].includes(decodeURIComponent(part))) ||
+      path.split('/').some(part => !part || ['.', '..'].includes(decodeURIComponent(part)) || /[\\/]/.test(decodeURIComponent(part))) ||
       /^[a-z][a-z0-9+.-]*:/i.test(path) || /[\\]/.test(path)) {
     throw new Error('Expected a file path relative to the bookmarks module scope');
   }
@@ -37,10 +37,17 @@ function isRdf(contentType) {
   return ['text/turtle', 'application/n-triples', 'text/n3', 'application/trig', 'application/n-quads']
     .includes((contentType || '').split(';')[0].trim().toLowerCase());
 }
+function parseDataset(text, baseIRI, contentType = 'text/turtle') {
+  if (typeof baseIRI !== 'string') throw new Error('A document base IRI is required for relative RDF identifiers');
+  if (text instanceof ArrayBuffer) text = new TextDecoder().decode(text);
+  else if (ArrayBuffer.isView(text)) text = new TextDecoder().decode(text);
+  if (typeof text !== 'string') throw new Error('Expected textual RDF');
+  return new Store(new Parser({ baseIRI, format: contentType.split(';')[0].trim().toLowerCase() }).parse(text));
+}
 function parseBookmarks(text, { path, baseIRI, contentType = 'text/turtle' }) {
   validatePath(path);
   if (!baseIRI) throw new Error('A document base IRI is required for relative RDF identifiers');
-  const store = new Store(new Parser({ baseIRI, format: contentType.split(';')[0] }).parse(text));
+  const store = parseDataset(text, baseIRI, contentType);
   const values = (subject, predicate) => store.getObjects(subject, namedNode(predicate), null);
   const first = (subject, predicates, termTypes) => {
     for (const predicate of predicates) {
@@ -79,4 +86,4 @@ function parseBookmarks(text, { path, baseIRI, contentType = 'text/turtle' }) {
     return bookmark;
   });
 }
-module.exports = { parseBookmarks, isRdf, reference, decodeReference, validatePath };
+module.exports = { parseBookmarks, parseDataset, isRdf, reference, decodeReference, validatePath, NS, types };

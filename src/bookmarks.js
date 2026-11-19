@@ -31,7 +31,7 @@ const Bookmarks = function (privateClient/*, publicClient*/) {
     const file = await privateClient.getFile(path, maxAge);
     if (file.data === undefined || file.data === null) return [];
     if (isRdf(file.contentType)) {
-      return parseBookmarks(file.data, { path, baseIRI: privateClient.getItemURL(path), contentType: file.contentType });
+      return parseBookmarks(file.data, { path, baseIRI: await privateClient.getItemURL(path), contentType: file.contentType });
     }
     if (file.contentType && !/^(application\/json|application\/[^;]+\+json)(;|$)/i.test(file.contentType)) return [];
     const value = typeof file.data === 'string' ? JSON.parse(file.data) : file.data;
@@ -213,6 +213,11 @@ const Bookmarks = function (privateClient/*, publicClient*/) {
 
     // Read one RDF or JSON document through the rs.js scoped cache and backend.
     readDocument,
+
+    openSolidCollection(options = {}) {
+      const { SolidCollection } = require('./solid-collection');
+      return new SolidCollection({ ...options, client: options.client || privateClient });
+    },
 
     client: privateClient,
   };
